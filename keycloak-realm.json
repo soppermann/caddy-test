@@ -1,0 +1,51 @@
+{
+  "realm": "external-realm",
+  "enabled": true,
+  "users": [
+    {
+      "username": "testuser",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "User",
+      "email": "testuser@example.com",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "my-client-id",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "my-super-secret-client-secret",
+      "redirectUris": ["http://app.localtest.me:8000/*"],
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      },
+      "webOrigins": ["http://app.localtest.me:8000"],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "audience-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "my-client-id",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}

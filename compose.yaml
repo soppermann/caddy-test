@@ -1,0 +1,83 @@
+services:
+  # =========================================================================
+  # 1. SIMULATED "EXTERNAL" KEYCLOAK (Isolated on external_idp_net)
+  # =========================================================================
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    command: start-dev --import-realm
+    environment:
+      # Current Keycloak 26+ bootstrap variables (replaces KEYCLOAK_ADMIN)
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # Ensures Keycloak issues tokens with the exact URL expected by browser & oauth2-proxy
+      KC_HOSTNAME: http://auth.localtest.me:8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak-realm.json:/opt/keycloak/data/import/keycloak-realm.json:ro
+    networks:
+      - external_idp_net
+
+  # =========================================================================
+  # 2. CADDY REVERSE PROXY (Internal stack entry point)
+  # =========================================================================
+  caddy:
+    image: caddy:2.9-alpine
+    ports:
+      - "8000:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    networks:
+      - internal_app_net
+    depends_on:
+      - oauth2-proxy
+      - hello-world
+
+  # =========================================================================
+  # 3. OAUTH2-PROXY (Forward Auth Middleware)
+  # =========================================================================
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.2
+    restart: on-failure
+    environment:
+      OAUTH2_PROXY_HTTP_ADDRESS: "0.0.0.0:4180"
+      OAUTH2_PROXY_REVERSE_PROXY: "true"
+      # Current provider (replaces deprecated 'keycloak' provider)
+      OAUTH2_PROXY_PROVIDER: "keycloak-oidc"
+      OAUTH2_PROXY_CLIENT_ID: "my-client-id"
+      OAUTH2_PROXY_CLIENT_SECRET: "my-super-secret-client-secret"
+      OAUTH2_PROXY_REDIRECT_URL: "http://app.localtest.me:8000/oauth2/callback"
+      # Keycloak 17+ root realm path (no /auth prefix)
+      OAUTH2_PROXY_OIDC_ISSUER_URL: "http://auth.localtest.me:8080/realms/external-realm"
+      OAUTH2_PROXY_CODE_CHALLENGE_METHOD: "S256"
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+      # 32-byte base64-encoded seed for cookie encryption
+      OAUTH2_PROXY_COOKIE_SECRET: "bXktMzItYnl0ZS1iYXNlNjQtY29va2llLXNlY3JldCE="
+      # Set to false ONLY for local plain-HTTP testing; use true in production HTTPS
+      OAUTH2_PROXY_COOKIE_SECURE: "false"
+      OAUTH2_PROXY_COOKIE_DOMAINS: ".localtest.me"
+      OAUTH2_PROXY_WHITELIST_DOMAINS: ".localtest.me:8000,.localtest.me:8080"
+      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
+      # Skip the intermediate oauth2-proxy "Sign in with..." button and go straight to Keycloak
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+    extra_hosts:
+      # Routes auth.localtest.me out to the host machine's port 8080
+      - "auth.localtest.me:host-gateway"
+    networks:
+      - internal_app_net
+
+  # =========================================================================
+  # 4. STATIC "HELLO, WORLD!" SERVICE (Protected Upstream)
+  # =========================================================================
+  hello-world:
+    image: nginx:alpine
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+    networks:
+      - internal_app_net
+
+networks:
+  internal_app_net:
+    driver: bridge
+  external_idp_net:
+    driver: bridge

@@ -1,0 +1,30 @@
+http://app.localtest.me {
+	# 1. Requests to /oauth2/* are proxied directly to oauth2-proxy without authentication.
+	handle /oauth2/* {
+		reverse_proxy oauth2-proxy:4180 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Uri {uri}
+		}
+	}
+
+	# 2. All other requests are first checked against oauth2-proxy via forward_auth.
+	handle {
+		forward_auth oauth2-proxy:4180 {
+			uri /oauth2/auth
+
+			header_up X-Real-IP {remote_host}
+
+			# Optional: Pass authenticated user headers downstream to your app
+			copy_headers X-Auth-Request-User X-Auth-Request-Email
+
+			# If oauth2-proxy returns 401 Unauthorized, redirect the browser to sign in
+			@error status 401
+			handle_response @error {
+				redir * /oauth2/sign_in?rd={scheme}://{host}:{port}{uri}
+			}
+		}
+
+		# 3. Once authenticated (2xx from oauth2-proxy), proxy to the static "Hello, world!" site
+		reverse_proxy hello-world:80
+	}
+}
